@@ -1,0 +1,14 @@
+# Milionář — Dependencies
+# Install: pip install -r requirements.txt
+
+ddgs>=0.1                    # News search (free, no API key)
+python-dotenv>=1.0           # Load .env file
+requests>=2.28               # HTTP client (Alpaca API, OpenRouter, Telegram)
+mcp>=1.0                     # MCP Python SDK (Alpaca tool provider via stdio)
+pandas>=2.0                  # DataFrames for technical analysis
+pandas-ta>=0.3               # Technical indicators (SMA, RSI, ...)
+aiohttp>=3.9                 # Async HTTP client for Reddit sentiment
+aiofiles>=23.0               # Async file operations
+pypdf>=5.0                   # PDF metadata parsing
+filelock>=3.12               # Concurrent JSON file locking
+rich>=13.0.0                 # Beautiful terminal UI and dashboard
