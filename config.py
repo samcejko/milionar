@@ -59,8 +59,11 @@ class Config:
     CYCLE_INTERVAL_MINUTES: int = 15
     MAX_TOOL_CALLS: int = 5
 
-    # -- Trading Rules -------------------------------------------
+    # -- Risk Management Base Limits (Dynamically scaled) --------
+    MAX_POSITIONS: int = 10
+    MAX_POSITION_PCT: float = 0.15
     MIN_CONFIDENCE: float = 0.7
+    ENABLE_YOLO_MODE: bool = True  # Toggle for extreme asymmetric risk bets
     MAX_DAILY_TRADES: int = 5            # Hard kill-switch: max trades per day
 
     # -- Risk Management (base values - risk.py overrides dynamically)

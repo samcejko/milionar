@@ -157,6 +157,70 @@ class TradeExecutor:
                 
         return {"executed": False, "reason": "No order ID returned"}
 
+    async def short(self, ticker: str, amount_pct: float, equity: float, stop_loss_pct: float = None, take_profit_pct: float = None) -> dict:
+        """Open a SHORT position using a notional amount."""
+        if "/" in ticker:
+            msg = f"Cannot short crypto on Alpaca: {ticker}"
+            log.warning(msg)
+            return {"executed": False, "reason": msg}
+
+        notional = round(equity * (amount_pct / 100), 2)
+        if notional < 1.0:
+            return {"executed": False, "reason": "Notional too small"}
+
+        order = {
+            "symbol": ticker.upper().strip(),
+            "notional": str(notional),
+            "side": "sell",
+            "type": "market",
+            "time_in_force": "day",
+        }
+
+        log.info(f"SHORT {ticker} - ${notional:.2f} ({amount_pct}% of ${equity:.2f})")
+        result = await self._request("POST", "/v2/orders", order)
+
+        if "error" in result:
+            return {"executed": False, "reason": result["error"]}
+
+        order_id = result.get("id")
+        if order_id:
+            order_info = await self.wait_for_order(order_id)
+            if order_info.get("status") == "filled":
+                filled_qty = order_info.get("filled_qty")
+                filled_avg_price = _safe_float(order_info.get("filled_avg_price", 0))
+                
+                if filled_qty and filled_avg_price > 0 and stop_loss_pct:
+                    trail_pct = float(stop_loss_pct)
+                    ts_order = {
+                        "symbol": ticker.upper().strip(),
+                        "qty": filled_qty,
+                        "side": "buy",
+                        "type": "trailing_stop",
+                        "trail_percent": str(round(trail_pct, 2)),
+                        "time_in_force": "day",
+                    }
+                    ts_res = await self._request("POST", "/v2/orders", ts_order)
+                    if "error" in ts_res:
+                        log.error(f"Failed to submit Short Trailing Stop for {ticker}: {ts_res['error']}")
+                    else:
+                        log.info(f"Short Trailing Stop submitted for {ticker}: Trail {trail_pct}%")
+
+                return {
+                    "executed": True,
+                    "order_id": order_id,
+                    "symbol": ticker,
+                    "notional": notional,
+                    "side": "sell",
+                    "status": "filled",
+                    "filled_avg_price": filled_avg_price,
+                }
+            else:
+                log.warning(f"Short order {order_id} not filled. Cancelling...")
+                await self._request("DELETE", f"/v2/orders/{order_id}")
+                return {"executed": False, "reason": "Order cancelled"}
+                
+        return {"executed": False, "reason": "No order ID returned"}
+
     async def sell(self, ticker: str) -> dict:
         """
         Sell/close entire position in a symbol.

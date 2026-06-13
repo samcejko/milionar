@@ -3,6 +3,8 @@
 # Exit on error
 set -e
 
+export PATH="$HOME/.local/bin:$PATH"
+
 echo "========================================="
 echo " Milionar Trading Bot - Auto Setup & Run"
 echo "========================================="

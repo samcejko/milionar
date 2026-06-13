@@ -1,4 +1,4 @@
-from utils import update_alpha_signals
+﻿from utils import update_alpha_signals
 import asyncio
 import json
 import os
@@ -71,7 +71,6 @@ async def main():
     
     update_alpha_signals("luxury_sentiment", "GLOBAL_MACRO", result)
     
-    f"Error writing to {SIGNALS_FILE}: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -37,6 +37,8 @@ from brain.mcp_client import McpToolProvider
 from brain.thinker import Thinker
 from brain.tools import ToolRegistry
 from market.news import NewsSearch
+from market.data import MarketData
+from market.scanner import MarketScanner
 from trader.executor import TradeExecutor
 from trader.risk import RiskManager
 from memory.manager import MemoryManager
@@ -120,6 +122,8 @@ class Milionar:
 
         # Initialize components
         self.thinker = Thinker(self.config)
+        self.market = MarketData(self.config)
+        self.scanner = MarketScanner()
         self.news = NewsSearch()
         self.executor = TradeExecutor(self.config)
         self.risk = RiskManager(self.config)
@@ -187,13 +191,11 @@ class Milionar:
             if ticker:
                 active_tickers.add(ticker)
                 
-        # Auto-Discovery: If no active tickers, inject a default universe
+        # Auto-Discovery: If no active tickers, scan the market for hot movers
         if not active_tickers:
-            import random
-            universe = ["AAPL", "NVDA", "MSFT", "TSLA", "AMD", "META", "GOOGL", "AMZN", "PLTR", "BTC/USD", "ETH/USD"]
-            auto_picked = random.sample(universe, min(5, len(universe)))
+            auto_picked = await self.scanner.get_hot_tickers(limit=5)
             active_tickers.update(auto_picked)
-            log.info(f"Watchlist is empty. Auto-discovered tickers for this cycle: {', '.join(auto_picked)}")
+            log.info(f"Watchlist is empty. Auto-discovered trending tickers: {', '.join(auto_picked)}")
 
         # 3. Pre-fetch multi-timeframe TA for all active tickers = list(filter(None, active_tickers))
         active_tickers = list(filter(None, active_tickers))
@@ -343,14 +345,26 @@ class Milionar:
                 stop_loss_pct=decision.get("stop_loss_pct"),
                 take_profit_pct=decision.get("take_profit_pct"),
             )
-        elif action == "SELL":
+        elif action == "SHORT":
+            result = await self.executor.short(
+                ticker=decision["ticker"],
+                amount_pct=decision.get("amount_pct", 10),
+                equity=equity,
+                stop_loss_pct=decision.get("stop_loss_pct"),
+                take_profit_pct=decision.get("take_profit_pct"),
+            )
+        elif action in ["SELL", "COVER"]:
             ticker = decision["ticker"]
             pos = next((p for p in positions if p["symbol"] == ticker), None)
-            result = await self.executor.sell(ticker=ticker)
+            result = await self.executor.sell(ticker=ticker)  # sell() closes any open position
             if result.get("executed") and "filled_avg_price" in result and pos:
                 entry = _safe_float(pos.get("avg_entry_price", 0))
                 filled = _safe_float(result["filled_avg_price"])
-                pnl_pct = (filled - entry) / entry if entry > 0 else 0
+                side = pos.get("side", "long")
+                if side == "long":
+                    pnl_pct = (filled - entry) / entry if entry > 0 else 0
+                else:
+                    pnl_pct = (entry - filled) / entry if entry > 0 else 0
             elif pos:
                 pnl_pct = _safe_float(pos.get("unrealized_plpc", 0))
         else:
@@ -360,7 +374,7 @@ class Milionar:
         if result.get("executed"):
             await self.state.record_trade()
 
-            if action == "BUY":
+            if action in ["BUY", "SHORT"]:
                 sl = decision.get("stop_loss_pct")
                 tp = decision.get("take_profit_pct")
                 if sl is not None and tp is not None:
@@ -734,6 +748,11 @@ class Milionar:
 
             # Main loop - absolute scheduling
             from datetime import timedelta
+            import os
+            
+            alpha_file = self.config.MEMORY_DIR / "alpha_signals.json"
+            last_mtime = os.path.getmtime(alpha_file) if alpha_file.exists() else 0
+            
             while self.running:
                 now = datetime.now()
                 
@@ -748,13 +767,20 @@ class Milionar:
                 next_minute = ((now.minute // interval) + 1) * interval
                 
                 next_run = now.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=next_minute)
-                sleep_seconds = (next_run - datetime.now()).total_seconds()
                 
-                if sleep_seconds > 0:
-                    await asyncio.sleep(sleep_seconds)
+                # Active sleep: check every 1 second for urgent interrupts
+                while self.running and datetime.now() < next_run:
+                    await asyncio.sleep(1)
                     
+                    current_mtime = os.path.getmtime(alpha_file) if alpha_file.exists() else 0
+                    if current_mtime > last_mtime:
+                        log.info("🚨 [INTERRUPT] New Alpha Signal detected! Waking up immediately.")
+                        last_mtime = current_mtime
+                        break
+                        
                 if self.running:
                     await self.run_cycle()
+                    last_mtime = os.path.getmtime(alpha_file) if alpha_file.exists() else last_mtime
 
         finally:
             # Always disconnect MCP on exit

@@ -41,40 +41,34 @@ async def get_social_sentiment(ticker: str) -> dict:
 
     # For crypto pairs like BTC/USD, just search for BTC
     search_query = ticker.split("/")[0]
+    query = f"{search_query} site:reddit.com/r/WallStreetBets OR site:reddit.com/r/stocks OR site:reddit.com/r/CryptoCurrency"
 
-    url = (
-        f"https://www.reddit.com/r/WallStreetBets+stocks+options+CryptoCurrency/"
-        f"search.json?q={urllib.parse.quote(search_query)}&restrict_sr=1&sort=new&limit=25"
-    )
-    headers = {
-        "User-Agent": "MilionarBot/1.0 (Trading Analysis Engine; +https://github.com/milionar-bot)"
-    }
-
+    posts = []
     try:
-        async with aiohttp.ClientSession() as session:
-            for attempt in range(3):
-                async with session.get(url, headers=headers, timeout=10) as resp:
-                    if resp.status == 429:
-                        log.warning(f"Reddit API rate limit (429) na pokus {attempt+1}, čekám...")
-                        await asyncio.sleep(2 ** attempt)
-                        continue
-                    resp.raise_for_status()
-                    data = await resp.json()
-                    break
-            else:
-                raise Exception("Reddit API opakovaně vrací 429 Too Many Requests.")
+        from ddgs import DDGS
+        def fetch_ddg():
+            with DDGS() as ddgs:
+                return list(ddgs.text(query, timelimit="w", max_results=20))
+                
+        results = await asyncio.to_thread(fetch_ddg)
+        
+        for res in results:
+            posts.append({
+                "data": {
+                    "title": res.get("title", ""),
+                    "selftext": res.get("body", "")
+                }
+            })
     except Exception as e:
-        log.warning(f"Reddit fetch failed for {ticker}: {e}")
+        log.warning(f"Reddit (via DDG) fetch failed for {ticker}: {e}")
         return {
             "ticker": ticker,
             "mention_count": 0,
             "sentiment_score": 0,
             "hype_level": "LOW",
-            "summary": f"Nepodařilo se načíst data: {e}",
+            "summary": f"Nepodařilo se načíst data přes DDG: {e}",
             "error": str(e),
         }
-
-    posts = data.get("data", {}).get("children", [])
     
     if not posts:
         return {

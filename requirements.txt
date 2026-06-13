@@ -12,3 +12,4 @@ aiofiles>=23.0               # Async file operations
 pypdf>=5.0                   # PDF metadata parsing
 filelock>=3.12               # Concurrent JSON file locking
 rich>=13.0.0                 # Beautiful terminal UI and dashboard
+youtube-transcript-api>=0.6.2 # Downloading transcripts from YouTube videos

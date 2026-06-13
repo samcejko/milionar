@@ -254,18 +254,18 @@ class MarketData:
                         log.error(f"Alpaca Data API error: {error_msg}")
                         return {}
                     
-                try:
-                    return await resp.json()
-                except ValueError:
-                    text = await resp.text()
-                    log.error(f"Alpaca Data API returned invalid JSON: {text[:200]}")
-                    return {}
-        except aiohttp.ClientError as e:
-            log.error(f"Alpaca Data API connection error: {e}")
-            return {}
-        except asyncio.TimeoutError:
-            log.error("Alpaca Data API request timed out")
-            return {}
+                    try:
+                        return await resp.json()
+                    except ValueError:
+                        text = await resp.text()
+                        log.error(f"Alpaca Data API returned invalid JSON: {text[:200]}")
+                        return {}
+            except aiohttp.ClientError as e:
+                log.error(f"Alpaca Data API connection error: {e}")
+                return {}
+            except asyncio.TimeoutError:
+                log.error("Alpaca Data API request timed out")
+                return {}
 
     def _get_cached(self, key: str):
         """Return cached value if still valid, else None."""

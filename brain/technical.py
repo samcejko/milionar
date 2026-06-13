@@ -112,23 +112,39 @@ async def _analyze_daily(ticker: str, config: Config) -> dict:
     if len(bars) < 21:
         return {"error": f"Not enough daily candles ({len(bars)}, need >=21)"}
 
-    return await asyncio.to_thread(_calc_daily_indicators_sync, bars)
+    return await asyncio.to_thread(_calc_daily_indicators_sync, bars, ticker, config)
 
 
-def _calc_daily_indicators_sync(bars: list[dict]) -> dict:
+def _calc_daily_indicators_sync(bars: list[dict], ticker: str, config: Config) -> dict:
     """Synchronous worker for daily pandas calculations."""
+    
+    # Load optimal params if available
+    sma_len = 20
+    rsi_len = 14
+    try:
+        import json
+        params_file = config.MEMORY_DIR / "optimal_params.json"
+        if params_file.exists():
+            with open(params_file, "r") as f:
+                params = json.load(f)
+                if ticker in params:
+                    sma_len = params[ticker].get("sma_length", 20)
+                    rsi_len = params[ticker].get("rsi_length", 14)
+    except:
+        pass
+        
     df = pd.DataFrame(bars)
     df["close"] = df["close"].astype(float)
 
-    df["SMA_20"] = ta.sma(df["close"], length=20)
-    df["RSI_14"] = ta.rsi(df["close"], length=14)
+    df[f"SMA_{sma_len}"] = ta.sma(df["close"], length=sma_len)
+    df[f"RSI_{rsi_len}"] = ta.rsi(df["close"], length=rsi_len)
     df["ATR_14"] = ta.atr(df["high"], df["low"], df["close"], length=14)
     df["SMA_20_Volume"] = ta.sma(df["volume"], length=20)
 
     latest = df.iloc[-1]
     price = round(float(latest["close"]), 2)
-    sma_20 = round(float(latest["SMA_20"]), 2) if pd.notna(latest["SMA_20"]) else None
-    rsi_14 = round(float(latest["RSI_14"]), 2) if pd.notna(latest["RSI_14"]) else None
+    sma_val = round(float(latest[f"SMA_{sma_len}"]), 2) if pd.notna(latest[f"SMA_{sma_len}"]) else None
+    rsi_val = round(float(latest[f"RSI_{rsi_len}"]), 2) if pd.notna(latest[f"RSI_{rsi_len}"]) else None
     atr_14 = round(float(latest["ATR_14"]), 4) if pd.notna(latest["ATR_14"]) else None
     
     atr_pct = round((atr_14 / price) * 100, 2) if atr_14 and price > 0 else None
@@ -139,16 +155,16 @@ def _calc_daily_indicators_sync(bars: list[dict]) -> dict:
 
     return {
         "current_price": price,
-        "SMA_20": sma_20,
-        "RSI_14": rsi_14,
+        f"SMA_{sma_len}": sma_val,
+        f"RSI_{rsi_len}": rsi_val,
         "ATR_14": atr_14,
         "ATR_pct": atr_pct,
         "current_volume": current_vol,
         "avg_volume_20d": avg_vol,
         "volume_trend": vol_trend,
         "volume_breakout": current_vol > avg_vol * 1.5,
-        "trend": _interpret_trend(price, sma_20),
-        "rsi_signal": _interpret_rsi(rsi_14),
+        "trend": _interpret_trend(price, sma_val),
+        "rsi_signal": _interpret_rsi(rsi_val),
     }
 
 

@@ -111,29 +111,43 @@ class RiskManager:
         if action == "HOLD":
             return True, "HOLD - no validation needed"
 
-        if action == "SELL":
+        if action in ["SELL", "COVER"]:
             # Verify we actually hold the position
             ticker = decision.get("ticker", "")
             held = [p["symbol"] for p in positions]
             if ticker and ticker not in held:
-                return False, f"Cannot sell {ticker} - not in portfolio"
-            return True, "SELL approved"
+                return False, f"Cannot {action} {ticker} - not in portfolio"
+            return True, f"{action} approved"
 
-        # -- BUY validation ----------------------------------
-        if action != "BUY":
+        # -- BUY / SHORT validation ----------------------------------
+        if action not in ["BUY", "SHORT"]:
             return False, f"Unknown action: {action}"
 
         limits = self.get_dynamic_limits(equity)
         ticker = decision.get("ticker", "UNKNOWN")
 
-        # Rule 1: Minimum confidence
+        # Rule 1: Minimum confidence & YOLO Logic
         confidence = float(decision.get("confidence", 0))
-        if confidence < limits["min_confidence"]:
+        is_yolo = False
+        
+        if confidence < 0.40:
             return False, (
-                f"[{ticker}] Confidence {confidence:.2f} < "
-                f"minimum {limits['min_confidence']:.2f} "
-                f"(tier: {limits['tier']})"
+                f"[{ticker}] Confidence {confidence:.2f} < 0.40. "
+                "Příliš nebezpečné, obchod zamítnut."
             )
+            
+        if confidence < limits["min_confidence"]:
+            if getattr(self.config, "ENABLE_YOLO_MODE", False):
+                is_yolo = True
+                log.warning(
+                    f"[{ticker}] Confidence {confidence:.2f} < {limits['min_confidence']:.2f} (tier: {limits['tier']}). "
+                    "Povoluji jako YOLO spekulaci s drasticky sníženým rizikem!"
+                )
+            else:
+                return False, (
+                    f"[{ticker}] Confidence {confidence:.2f} < minimum {limits['min_confidence']:.2f} "
+                    f"a YOLO mód je vypnutý. Zamítnuto."
+                )
 
         # Rule 2: Max open positions
         if len(positions) >= limits["max_positions"]:
@@ -151,6 +165,14 @@ class RiskManager:
         except ValueError:
             log.warning(f"[{ticker}] Invalid amount_pct format from AI: {amount_raw}")
             amount_pct = 0.0
+
+        # -- YOLO Speculative Position Sizing --
+        if is_yolo:
+            yolo_max = 0.2  # Max 0.2% of equity for YOLO bets
+            if amount_pct > yolo_max:
+                log.warning(f"[{ticker}] YOLO Override: Snížení požadované pozice {amount_pct}% na {yolo_max}%.")
+                amount_pct = yolo_max
+                decision["amount_pct"] = amount_pct
 
         # -- Dynamic Risk Sizing based on Confidence and Sentiment --
         sentiment = context.get("prefetched_sentiment", {}).get(ticker, {})

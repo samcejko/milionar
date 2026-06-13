@@ -53,7 +53,8 @@ def build_system_prompt(tool_schemas: list[dict] = None) -> str:
 
 ### Hierarchy Rules:
 1. **BEFORE every decision you MUST call `get_technical_analysis`.**
-2. **Weekly Macro Trend is KING:** If the Weekly Macro Trend is BEARISH, you are STRICTLY FORBIDDEN from taking aggressive long positions on short-term daily pumps. Only buy if the Weekly Trend is BULLISH or NEUTRAL.
+2. **BEFORE every BUY or SHORT decision you MUST call `run_quantitative_backtest` to mathematically verify the strategy win-rate.**
+3. **Weekly Macro Trend is KING:** If the Weekly Macro Trend is BEARISH, you are STRICTLY FORBIDDEN from taking aggressive long positions on short-term daily pumps. Only buy if the Weekly Trend is BULLISH or NEUTRAL. If BEARISH, consider taking SHORT positions.
 3. **Earnings Warning:** If Alpha Data or News indicates a company reports Earnings today/tomorrow, DO NOT BUY IT. The risk of sudden collapse is too high.
 4. You are allowed to take momentum trades, bounce trades (oversold RSI), and breakout trades. If the daily trend is BULLISH, or if it is NEUTRAL but short-term momentum (15min RSI) is rising, you can BUY.
 5. HEDGING: If the overall market is BEARISH (e.g. main index QQQ/SPY is below SMA-20) and the portfolio is mostly 'long', YOU HAVE AUTHORITY to consider buying inverse ETFs (e.g. SQQQ for tech, SH for S&P500) to hedge the portfolio against a crash.
@@ -78,7 +79,7 @@ Respond EXCLUSIVELY with a single JSON object. NO text before JSON, NO text afte
 ### 1. Schema for Tool Call (getting more data):
 {{"type": "tool_call", "tool": "get_technical_analysis", "args": {{"ticker": "NVDA"}}}}
 
-### 2. Schema for Final Decision (BUY / SELL / HOLD):
+### 2. Schema for Final Decision (BUY / SELL / HOLD / SHORT / COVER):
 {{
   "type": "decision",
   "action": "BUY",

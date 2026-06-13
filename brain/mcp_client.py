@@ -72,8 +72,8 @@ class McpToolProvider:
             cmd = "cmd.exe"
             args = ["/c", "uvx", "alpaca-mcp-server", "serve"]
         else:
-            cmd = "uvx"
-            args = ["alpaca-mcp-server", "serve"]
+            cmd = "alpaca-mcp-server"
+            args = ["serve"]
 
         server_params = StdioServerParameters(
             command=cmd,
@@ -96,7 +96,7 @@ class McpToolProvider:
             self._session = await self._session_context.__aenter__()
 
             # Initialize MCP handshake (with timeout)
-            await asyncio.wait_for(self._session.initialize(), timeout=300)
+            await asyncio.wait_for(self._session.initialize(), timeout=1000)
 
             # Discover tools
             await self._discover_tools()
@@ -106,7 +106,7 @@ class McpToolProvider:
                 f"{', '.join(t.name for t in self._tools)}"
             )
         except asyncio.TimeoutError:
-            log.error("❌ MCP server handshake timed out (300s)")
+            log.error("❌ MCP server handshake timed out (1000s)")
             await self.disconnect()
             raise RuntimeError("MCP server handshake timed out")
         except OSError as e:

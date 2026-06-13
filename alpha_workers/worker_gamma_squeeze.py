@@ -1,4 +1,4 @@
-from utils import update_alpha_signals
+﻿from utils import update_alpha_signals
 import asyncio
 import json
 import os
@@ -89,7 +89,6 @@ async def main():
     for res in results:
         update_alpha_signals("gamma_squeeze", res["ticker"], res)
         
-    f"Error writing to {SIGNALS_FILE}: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())

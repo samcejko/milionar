@@ -1,4 +1,4 @@
-from utils import update_alpha_signals
+﻿from utils import update_alpha_signals
 import asyncio
 import json
 import os
@@ -68,11 +68,11 @@ def get_glassdoor_rating(company_name):
                 title = res.get('title', '')
                 
                 # Regex patterns for Glassdoor rating snippets e.g. "rating of 4.2 out of 5"
-                match = re.search(r'(\d\.\d)\s*(?:out of 5|★|stars)', body, re.IGNORECASE)
+                match = re.search(r'(\d\.\d)\s*(?:out of 5|â˜…|stars)', body, re.IGNORECASE)
                 if not match:
                     match = re.search(r'Rating:?\s*(\d\.\d)', body, re.IGNORECASE)
                 if not match:
-                    match = re.search(r'(\d\.\d)\s*(?:out of 5|★|stars)', title, re.IGNORECASE)
+                    match = re.search(r'(\d\.\d)\s*(?:out of 5|â˜…|stars)', title, re.IGNORECASE)
                 
                 if match:
                     rating = float(match.group(1))
@@ -129,7 +129,6 @@ async def main():
         update_alpha_signals("hiring_glassdoor", res["ticker"], res)
         
     # Atomic write (Safeguard against data corruption)
-    f"Error writing to {SIGNALS_FILE}: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())

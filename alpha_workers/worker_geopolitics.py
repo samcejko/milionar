@@ -1,78 +1,62 @@
-from utils import update_alpha_signals
-import asyncio
-import json
+import logging
+import sys
 import os
+import asyncio
+import requests
+import xml.etree.ElementTree as ET
 from datetime import datetime
-from ddgs import DDGS
 
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SIGNALS_FILE = os.path.join(ROOT_DIR, "alpha_signals.json")
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from alpha_workers.utils import update_alpha_signal
 
-# CONSERVATIVE SAFEGUARD 1: We look only for the worst, real market-moving events
-# We don't want to short SPY just because someone tweeted the word "rocket" (e.g. SpaceX).
-CRISIS_KEYWORDS = [
-    "war declared",
-    "missile strike",
-    "nuclear threat",
-    "massive sanctions",
-    "geopolitical escalation"
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("worker_geopolitics")
+
+RSS_FEEDS = [
+    "http://feeds.bbci.co.uk/news/world/rss.xml",
+    "https://moxie.foxnews.com/google-publisher/world.xml"
 ]
 
-def check_crisis_news():
-    """
-    Stable alternative to Twitter/X API (which is paid and prone to bans).
-    Instead it queries fresh news via DDG. Speed is in minutes.
-    """
-    crisis_hits = 0
-    recent_titles = []
-    
-    try:
-        with DDGS() as ddgs:
-            for kw in CRISIS_KEYWORDS:
-                # max_results=2 ensures DDG won't ban us for spamming
-                results = ddgs.news(kw, max_results=2)
-                for res in results:
-                    title = res.get('title', '').lower()
-                    
-                    # CONSERVATIVE SAFEGUARD 2: Confirmation. The news must have key dangerous words in the title.
-                    dangerous_words = ["missile", "strike", "war", "sanction", "nuclear", "attack"]
-                    if any(word in title for word in dangerous_words):
-                        crisis_hits += 1
-                        recent_titles.append(res.get('title'))
-    except Exception as e:
-        print(f"Error downloading DDG News: {e}")
-        return None, f"API Error: {e} (Safeguard: ignored)"
+KEYWORDS = ["missile", "invasion", "war", "escalation", "attack", "troops", "military", "bombed", "strike"]
 
-    # CONSERVATIVE SAFEGUARD 3: We require confirmation from multiple queries/sources
-    if crisis_hits >= 2:
-        return -1.0, f"CRITICAL: Detected {crisis_hits} geopolitical threats! E.g.: {', '.join(recent_titles[:2])}"
+def check_geopolitics():
+    log.info("Skenuji geopolitické RSS feedy...")
+    
+    hits = []
+    
+    for feed_url in RSS_FEEDS:
+        try:
+            res = requests.get(feed_url, timeout=10)
+            if res.status_code != 200:
+                continue
+                
+            root = ET.fromstring(res.content)
+            for item in root.findall(".//item")[:15]:
+                title = item.find("title").text if item.find("title") is not None else ""
+                title_lower = title.lower()
+                
+                matches = sum(1 for kw in KEYWORDS if kw in title_lower.split())
+                if matches >= 2: # Need at least 2 keywords in the same title to prevent false positives
+                    hits.append(title)
+                    
+        except Exception as e:
+            log.warning(f"Failed to fetch {feed_url}: {e}")
+            
+    if hits:
+        return "BEARISH", f"GEOPOLITICAL ESCALATION DETECTED! Akcie půjdou dolů, zlato/ropa nahoru. Zprávy: {hits[0]}"
         
-    return 0.0, "Calm geopolitical situation, no fresh extreme events."
+    return "NEUTRAL", "Geopolitická situace je klidná."
 
 async def main():
-    print(f"[{datetime.now().isoformat()}] Running worker_geopolitics.py (Geopolitical Macro Trigger)")
-    
-    score, reason = await asyncio.to_thread(check_crisis_news)
-    
-    signal = "NEUTRAL"
-    if score == -1.0:
-        signal = "BEARISH"
-        
-    # We write the result as a global macro indicator
+    signal, details = await asyncio.to_thread(check_geopolitics)
     result = {
-        "source": "geopolitics_worker",
-        "ticker": "GLOBAL_MACRO",
+        "source": "geopolitics",
         "signal": signal,
-        "score": score,
-        "confidence": abs(score) if score != 0.0 else 0.1,
-        "timestamp": datetime.now().isoformat(),
-        "details": reason
+        "details": details,
+        "timestamp": datetime.now().isoformat()
     }
-    
-    update_alpha_signals("geopolitics", "GLOBAL_MACRO", result)
-    
-    # CONSERVATIVE SAFEGUARD 4: Atomic write preventing JSON corruption
-    f"Error writing to {SIGNALS_FILE}: {e}")
+    update_alpha_signal("geopolitics", result)
+    log.info(f"Geopolitics signal updated: {signal}")
 
 if __name__ == "__main__":
     asyncio.run(main())

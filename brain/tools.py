@@ -17,6 +17,7 @@ import logging
 from config import Config
 from brain.technical import get_technical_analysis
 from brain.sentiment import get_social_sentiment
+from brain.backtest import run_quantitative_backtest
 
 log = logging.getLogger("milionar.tools")
 
@@ -40,6 +41,15 @@ LOCAL_TOOL_DESCRIPTIONS = [
         "args": {"ticker": "string — symbol, např. 'AAPL' nebo 'BTC/USD'"},
     },
     {
+        "name": "run_quantitative_backtest",
+        "description": (
+            "Provede rychlý matematický backtest za posledních 180 dní pro daný ticker. "
+            "Simuluje nákupy a prodeje podle Mean Reversion strategie a vrátí Win Rate (šanci na výhru). "
+            "Silně doporučeno zavolat před nákupem, abys matematicky ověřil, zda se akcii vyplatí obchodovat."
+        ),
+        "args": {"ticker": "string — symbol, např. 'AAPL' nebo 'BTC/USD'"},
+    },
+    {
         "name": "get_social_sentiment",
         "description": (
             "Analyzuje aktuální náladu na finančním Redditu pro daný ticker. "
@@ -49,6 +59,15 @@ LOCAL_TOOL_DESCRIPTIONS = [
         ),
         "args": {"ticker": "string — symbol, např. 'NVDA' nebo 'BTC'"},
     },
+    {
+        "name": "read_youtube_video",
+        "description": (
+            "Stáhne a přečte kompletní textový přepis (transcript) z YouTube videa. "
+            "Zavolej tuto funkci kdykoliv narazíš na odkaz na YouTube a potřebuješ zjistit, "
+            "co se ve videu přesně říká, místo hádání z clickbaitového názvu."
+        ),
+        "args": {"url": "string — kompletní URL adresa YouTube videa"},
+    },
 ]
 
 
@@ -57,7 +76,7 @@ class ToolRegistry:
     Hybrid tool registry: MCP + local tools.
 
     MCP tools are forwarded to the Alpaca MCP server via McpToolProvider.
-    Local tools (search_news, get_technical_analysis, get_social_sentiment)
+    Local tools (search_news, get_technical_analysis, get_social_sentiment, run_quantitative_backtest)
     are executed directly in-process.
     """
 
@@ -71,6 +90,8 @@ class ToolRegistry:
             "search_news": self._search_news,
             "get_technical_analysis": self._get_technical_analysis,
             "get_social_sentiment": self._get_social_sentiment,
+            "run_quantitative_backtest": self._run_quantitative_backtest,
+            "read_youtube_video": self._read_youtube_video,
         }
 
     def get_all_tool_schemas(self) -> list[dict]:
@@ -120,3 +141,46 @@ class ToolRegistry:
 
     async def _get_social_sentiment(self, ticker: str) -> dict:
         return await get_social_sentiment(ticker)
+
+    async def _run_quantitative_backtest(self, ticker: str) -> dict:
+        from market.data import MarketData
+        md = MarketData(self.config)
+        return await run_quantitative_backtest(ticker, md)
+
+    def _read_youtube_video(self, url: str) -> dict:
+        import urllib.parse as urlparse
+        from youtube_transcript_api import YouTubeTranscriptApi
+        
+        try:
+            parsed = urlparse.urlparse(url)
+            video_id = ""
+            if "youtube.com" in parsed.netloc:
+                qs = urlparse.parse_qs(parsed.query)
+                video_id = qs.get("v", [""])[0]
+            elif "youtu.be" in parsed.netloc:
+                video_id = parsed.path.lstrip("/")
+                
+            if not video_id:
+                return {"error": "Invalid YouTube URL format."}
+                
+            # Fetch transcript (tries Czech first, then English, then any available)
+            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            try:
+                transcript = transcript_list.find_transcript(['cs', 'en'])
+            except:
+                # Fallback to the first available if cs/en not found
+                transcript = next(iter(transcript_list))
+                
+            data = transcript.fetch()
+            
+            # Combine all text blocks
+            full_text = " ".join([t['text'] for t in data])
+            
+            return {
+                "success": True,
+                "video_id": video_id,
+                "language": transcript.language,
+                "transcript": full_text
+            }
+        except Exception as e:
+            return {"error": f"Failed to extract transcript: {str(e)}"}

@@ -40,6 +40,23 @@ class AlphaWorkerManager:
             "worker_wayback_git.py": 43200,       # 12 hodin
             "worker_insider_trading.py": 21600,   # 6 hodin (OpenInsider buys)
             "worker_earnings_calendar.py": 43200, # 12 hodin (Yahoo Earnings)
+            "worker_macro_intel.py": 14400,       # 4 hodiny (FED, CPI)
+            "worker_tech_intel.py": 21600,        # 6 hodin (RAM, Tech Leaks)
+            "worker_jim_cramer.py": 14400,        # 4 hodiny (Inverse Cramer)
+            "worker_crypto_whales.py": 60,        # 1 minuta (HFT RSS polling)
+            "worker_hack_alerts.py": 30,          # 30 vteřin (HFT Hack/Exploit alerts)
+            "worker_corporate_flights.py": 43200, # 12 hodin (M&A Private Jets)
+            "worker_youtube_crypto.py": 14400,    # 4 hodiny (Pribyl YouTube Sentiment)
+            "worker_value_titans.py": 86400,      # 24 hodin (Buffett 13F)
+            "worker_macro_gurus.py": 43200,       # 12 hodin (Burry/Marks)
+            "worker_inverse_cathie.py": 86400,    # 24 hodin (Cathie Wood)
+            "worker_strategy_optimizer.py": 86400, # 24 hodin (ML Optimization)
+            "worker_wsb_sentiment.py": 14400,     # 4 hodiny (Reddit WSB)
+            "worker_app_store_fomo.py": 21600,    # 6 hodin (App Store Retail FOMO)
+            "worker_github_activity.py": 43200,   # 12 hodin (GitHub Commits)
+            "worker_wikipedia_fear.py": 43200,    # 12 hodin (Wikipedia Pageviews)
+            "worker_geopolitics.py": 300,         # 5 minut (Geopolitics HFT)
+            "worker_weather_commodities.py": 43200 # 12 hodin (Open-Meteo Brazil)
         }
 
     async def _run_worker(self, script_name: str, interval_seconds: int):
