@@ -266,6 +266,86 @@ class TradeExecutor:
             "order_id": "",
         }
 
+    async def is_shortable(self, ticker: str) -> bool:
+        """Check if an asset can be shorted on Alpaca."""
+        ticker = ticker.upper().strip()
+        safe_ticker = urllib.parse.quote(ticker, safe="")
+        res = await self._request("GET", f"/v2/assets/{safe_ticker}")
+        
+        if "error" in res:
+            return False
+            
+        shortable = res.get("shortable", False)
+        easy_to_borrow = res.get("easy_to_borrow", False)
+        return shortable and easy_to_borrow
+
+    async def adjust(self, ticker: str, amount_pct: float, stop_loss_pct: float = None) -> dict:
+        """
+        Adjust an existing position: partial sell and/or update trailing stop.
+        amount_pct is the percentage of the *current position* to sell (e.g. 50 = sell half).
+        """
+        ticker = ticker.upper().strip()
+        safe_ticker = urllib.parse.quote(ticker, safe="")
+        
+        # 1. Fetch current position to get exact qty
+        pos_res = await self._request("GET", f"/v2/positions/{safe_ticker}")
+        if "error" in pos_res:
+            return {"executed": False, "reason": f"Cannot adjust, position not found: {pos_res['error']}"}
+            
+        current_qty = _safe_float(pos_res.get("qty", 0))
+        side = pos_res.get("side", "long")
+        
+        executed_sell = False
+        # 2. Partial Sell
+        if amount_pct and amount_pct > 0:
+            sell_qty = current_qty * (amount_pct / 100.0)
+            if sell_qty > 0.0001:  # ignore dust
+                order = {
+                    "symbol": ticker,
+                    "qty": str(sell_qty),
+                    "side": "sell" if side == "long" else "buy",
+                    "type": "market",
+                    "time_in_force": "day",
+                }
+                log.info(f"ADJUST: Selling {amount_pct}% of {ticker} position (qty: {sell_qty})")
+                res = await self._request("POST", "/v2/orders", order)
+                if "error" in res:
+                    log.error(f"Partial sell failed for {ticker}: {res['error']}")
+                else:
+                    executed_sell = True
+                    current_qty -= sell_qty  # update qty for the trailing stop
+
+        # 3. Update Trailing Stop
+        if stop_loss_pct and current_qty > 0.0001:
+            # First, cancel existing working orders for this symbol
+            orders = await self._request("GET", f"/v2/orders?symbols={ticker}&status=open")
+            if isinstance(orders, list):
+                for o in orders:
+                    await self._request("DELETE", f"/v2/orders/{o['id']}")
+            
+            # Then submit new trailing stop
+            trail_pct = float(stop_loss_pct)
+            ts_order = {
+                "symbol": ticker,
+                "qty": str(current_qty),
+                "side": "sell" if side == "long" else "buy",
+                "type": "trailing_stop",
+                "trail_percent": str(round(trail_pct, 2)),
+                "time_in_force": "gtc" if "/" in ticker else "day",
+            }
+            log.info(f"ADJUST: Replacing Trailing Stop for {ticker} to {trail_pct}%")
+            res = await self._request("POST", "/v2/orders", ts_order)
+            if "error" in res:
+                log.error(f"Failed to update trailing stop for {ticker}: {res['error']}")
+            
+        return {
+            "executed": True,
+            "symbol": ticker,
+            "side": "adjust",
+            "status": "adjusted",
+            "notes": f"Sold {amount_pct}%" if executed_sell else "Updated Stop Loss",
+        }
+
     async def wait_for_order(self, order_id: str, timeout: int = 15) -> dict:
         """Wait for an order to be filled or rejected."""
         start_time = asyncio.get_event_loop().time()

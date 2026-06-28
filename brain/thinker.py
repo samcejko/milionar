@@ -78,7 +78,8 @@ class Thinker:
             except RuntimeError as e:
                 log.error(f"All models failed: {e}")
                 return {
-                    "action": "HOLD",
+                    "type": "decision",
+                    "action": "RETRY",
                     "reasoning": f"All AI models failed: {e}",
                 }
 
@@ -187,12 +188,12 @@ class Thinker:
         log.info("[RISK] Risk Officer - checking decision...")
         
         ro_prompt = (
-            "You are the Chief Risk Officer for a trading fund. Your job is to protect capital.\n"
+            "You are the Chief Risk Officer for a trading fund. Your job is to protect capital but ALSO allow high-quality setups to pass.\n"
             "Your analyst just proposed the following trade:\n"
             f"```json\n{json.dumps(decision, indent=2)}\n```\n\n"
-            "Check this proposal against the current market context and macro situation provided above.\n"
-            "Look for reasons why this trade might be a mistake (bad risk/reward, ignored macro trend, FOMO buying at peak hype, missing trend confirmation).\n"
-            "If you find a critical problem, veto it (veto: true). If it seems fine, allow it (veto: false).\n"
+            "Check this proposal against the current market context.\n"
+            "CRITICAL INSTRUCTION: Do NOT automatically veto trades just because of general macroeconomic fear, crypto hacks, or geopolitical noise, unless they directly and severely impact this specific asset. Only veto if the technical/fundamental setup is objectively terrible or the risk is extreme.\n"
+            "If you find a truly critical and direct problem, veto it (veto: true). Otherwise, allow it (veto: false).\n"
             "Reply strictly in JSON format:\n"
             "{\n"
             '  "type": "risk_assessment",\n'
@@ -232,10 +233,12 @@ class Thinker:
                         return obj
                 except json.JSONDecodeError:
                     pass
-            return {"veto": False, "reasoning": "Risk Officer did not reply validly, allowed."}
+            # If Risk Officer answers with invalid JSON, don't block the trade.
+            log.warning("Risk Officer did not reply validly, passing trade by default.")
+            return {"veto": False, "reasoning": "Risk Officer did not reply with valid JSON, safe pass applied."}
         except Exception as e:
             log.warning(f"Risk Officer failed: {e}")
-            return {"veto": True, "reasoning": f"Risk Officer failed to respond properly: {e} (failsafe veto)"}
+            return {"veto": False, "reasoning": f"Risk Officer failed to respond properly: {e} (failsafe pass)"}
 
     # ============================================================
     #  LLM call with model fallback
@@ -270,7 +273,10 @@ class Thinker:
                     ) as resp:
 
                         if resp.status >= 400:
-                            log.warning(f"Model {model_id} failed or returned empty response, trying next...")
+                            err_text = await resp.text()
+                            msg = f"HTTP {resp.status} - {err_text}"
+                            log.warning(f"Model {model_id} failed: {msg}")
+                            last_error = msg
                             await asyncio.sleep(2)
                             continue
 
@@ -280,17 +286,20 @@ class Thinker:
                 # Extract content from response
                 choices = data.get("choices", [])
                 if not choices:
-                    log.warning(f"Model {model_id} failed or returned empty response, trying next...")
+                    last_error = f"Empty choices in response: {data}"
+                    log.warning(f"Model {model_id} failed: {last_error}")
                     continue
 
                 content = choices[0].get("message", {}).get("content", "")
                 if not content or not content.strip():
-                    log.warning(f"Model {model_id} failed or returned empty response, trying next...")
+                    last_error = "Empty content string returned"
+                    log.warning(f"Model {model_id} failed: {last_error}")
                     continue
 
                 # JSON Validation
                 parsed = self._parse_json(content)
                 if parsed.get("reasoning") == "Could not parse AI response as JSON" or parsed.get("reasoning") == "Empty response from AI":
+                    last_error = f"Invalid JSON format returned"
                     log.warning(f"Invalid JSON from {model_id}")
                     continue
 

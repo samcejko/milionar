@@ -12,7 +12,7 @@ log = logging.getLogger("worker_inverse_cathie")
 
 def check_cathie_wood():
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
         log.info("Fetching Inverse Cathie Wood Intelligence...")
         
         query = '("Cathie Wood" OR "ARK Invest") (bought OR sold OR dumped OR buying)'

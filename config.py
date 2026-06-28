@@ -48,7 +48,7 @@ class Config:
     # -- MCP (Alpaca tool server) --------------------------------
     # Only read-only toolsets! Trading goes through executor.py/risk.py.
     MCP_TOOLSETS: str = os.getenv(
-        "MCP_TOOLSETS", "account,stock-data,crypto-data"
+        "MCP_TOOLSETS", "account,stock-data,crypto-data,assets,corporate-actions,news,fixed-income-data,index-data"
     )
 
     # -- Telegram Notifications (optional) -----------------------
@@ -57,7 +57,7 @@ class Config:
 
     # -- Main Loop -----------------------------------------------
     CYCLE_INTERVAL_MINUTES: int = 15
-    MAX_TOOL_CALLS: int = 5
+    MAX_TOOL_CALLS: int = 30
 
     # -- Risk Management Base Limits (Dynamically scaled) --------
     MAX_POSITIONS: int = 10

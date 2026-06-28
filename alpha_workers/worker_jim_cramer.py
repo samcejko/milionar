@@ -12,7 +12,7 @@ log = logging.getLogger("worker_cramer")
 
 def check_jim_cramer():
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
         log.info("Fetching Jim Cramer recommendations...")
         
         query = '"Jim Cramer" (buy OR sell OR recommends OR "mad money")'

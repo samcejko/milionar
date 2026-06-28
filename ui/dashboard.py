@@ -73,7 +73,7 @@ def print_dashboard(context: dict, cycle_interval_minutes: int):
     info_table.add_column("A", ratio=1)
     
     # Format watchlist
-    wl_str = ", ".join(watchlist) if watchlist else "Žádný (Auto-discovery aktivní)"
+    wl_str = ", ".join(w.get("ticker", "?") if isinstance(w, dict) else str(w) for w in watchlist) if watchlist else "Žádný (Auto-discovery aktivní)"
     wl_panel = Panel(f"[cyan]{wl_str}[/cyan]", title="Sledovaný Watchlist", border_style="cyan")
     info_table.add_row(wl_panel)
     

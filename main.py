@@ -184,6 +184,52 @@ class Milionar:
             log.error(f"   Failed to fetch macro context: {e}")
             macro_context = {}
 
+        # Alpaca Market Status (Clock & Calendar)
+        log.info("   Fetching Market Status from Alpaca...")
+        market_status = {}
+        try:
+            from alpaca.trading.client import TradingClient
+            from alpaca.trading.requests import GetCalendarRequest, GetCorporateAnnouncementsRequest
+            from alpaca.trading.enums import CorporateActionType
+            client = TradingClient(self.config.ALPACA_API_KEY, self.config.ALPACA_SECRET_KEY, paper=True)
+            clock = await asyncio.to_thread(client.get_clock)
+            market_status["is_open"] = clock.is_open
+            market_status["next_open"] = str(clock.next_open)
+            market_status["next_close"] = str(clock.next_close)
+            
+            # Get calendar for today
+            from datetime import date, timedelta
+            cal_req = GetCalendarRequest(start=date.today(), end=date.today())
+            cal = await asyncio.to_thread(client.get_calendar, cal_req)
+            if cal:
+                market_status["session_open"] = str(cal[0].open)
+                market_status["session_close"] = str(cal[0].close)
+                
+            # Pre-fetch recent corporate announcements (dividends, splits) for tracked tickers
+            market_status["announcements"] = []
+            if active_tickers:
+                # Need to use date strings or date objects depending on the SDK version
+                date_start = date.today() - timedelta(days=7)
+                date_end = date.today() + timedelta(days=30)
+                try:
+                    ann_req = GetCorporateAnnouncementsRequest(
+                        ca_types=[CorporateActionType.DIVIDEND, CorporateActionType.SPLIT],
+                        since=date_start,
+                        until=date_end,
+                        symbol=",".join(active_tickers)
+                    )
+                    announcements = await asyncio.to_thread(client.get_corporate_announcements, ann_req)
+                    if announcements:
+                        market_status["announcements"] = [
+                            f"[{a.ca_type}] {a.symbol}: {a.target_date} (Record: {a.record_date})"
+                            for a in announcements
+                        ]
+                except Exception as e:
+                    log.warning(f"   Could not fetch corporate announcements: {e}")
+                    
+        except Exception as e:
+            log.error(f"   Failed to fetch Alpaca clock/calendar/announcements: {e}")
+
         # Async fetch of TA and Sentiment for open positions AND watchlist
         active_tickers = {p["symbol"] for p in positions}
         for w in watchlist:
@@ -236,9 +282,20 @@ class Milionar:
                 log.error(f"   Alpha Data error: {e}")
 
         # Fetch News (DDG + Alpaca)
-        log.info("   Fetching news...")
+        log.info("   Fetching news and macro calendar...")
         ddg_news = await asyncio.to_thread(self.news.search_trending)
         
+        try:
+            # Prefetch today's economic events
+            from ddgs import DDGS
+            with DDGS() as ddgs:
+                macro_query = "today major economic calendar events US market"
+                macro_results = ddgs.news(macro_query, max_results=2)
+                for r in macro_results:
+                    ddg_news.append({"title": "[MACRO CALENDAR] " + r.get("title", ""), "snippet": r.get("body", "")})
+        except Exception as e:
+            log.warning(f"   Failed to fetch macro calendar: {e}")
+
         alpaca_news = []
         for ticker in active_tickers:
             t_news = await self.market.get_alpaca_news(ticker, limit=2)
@@ -254,6 +311,7 @@ class Milionar:
 
         return {
             "timestamp": datetime.now().isoformat(),
+            "market_status": market_status,
             "portfolio": portfolio,
             "positions": positions,
             "news": news,
@@ -317,6 +375,13 @@ class Milionar:
         # Get equity for risk calculation
         equity = context["portfolio"].get("equity", 0)
 
+        # Shortability check before Risk Validation
+        if action == "SHORT":
+            is_shortable = await self.executor.is_shortable(decision["ticker"])
+            if not is_shortable:
+                log.warning(f"   [REJECTED] {decision['ticker']} is not shortable on Alpaca")
+                return {"executed": False, "reason": "Asset is not shortable"}
+
         # Risk validation
         approved, reason = self.risk.validate_trade(decision, context)
 
@@ -352,6 +417,12 @@ class Milionar:
                 equity=equity,
                 stop_loss_pct=decision.get("stop_loss_pct"),
                 take_profit_pct=decision.get("take_profit_pct"),
+            )
+        elif action == "ADJUST":
+            result = await self.executor.adjust(
+                ticker=decision["ticker"],
+                amount_pct=decision.get("amount_pct", 0),
+                stop_loss_pct=decision.get("stop_loss_pct"),
             )
         elif action in ["SELL", "COVER"]:
             ticker = decision["ticker"]
@@ -669,6 +740,11 @@ class Milionar:
                 
             decision = await self.think(context)
 
+            # Check for LLM RETRY request
+            if decision.get("action") == "RETRY":
+                log.warning("[RETRY] AI models failed, requesting quick retry...")
+                return True
+
             # Phase 3: Act (sync - goes through executor.py, not MCP)
             result = await self.act(decision, context)
 
@@ -681,6 +757,7 @@ class Milionar:
             # Cycle summary
             elapsed = (datetime.now() - cycle_start).total_seconds()
             log.info(f"[SUCCESS] Cycle completed in {elapsed:.1f}s")
+            return False
 
         except Exception as e:
             log.error(f"[ERROR] Cycle failed with error: {e}", exc_info=True)
@@ -690,6 +767,7 @@ class Milionar:
                 await self.state.update_last_cycle()
             except Exception:
                 pass
+            return False
 
     # ============================================================
     #  Start / Stop
@@ -749,9 +827,11 @@ class Milionar:
             # Main loop - absolute scheduling
             from datetime import timedelta
             import os
+            from zoneinfo import ZoneInfo
             
             alpha_file = self.config.MEMORY_DIR / "alpha_signals.json"
             last_mtime = os.path.getmtime(alpha_file) if alpha_file.exists() else 0
+            last_market_open_date = None
             
             while self.running:
                 now = datetime.now()
@@ -778,9 +858,24 @@ class Milionar:
                         last_mtime = current_mtime
                         break
                         
+                    # Check for Market Open
+                    try:
+                        ny_time = datetime.now(ZoneInfo("America/New_York"))
+                        if ny_time.weekday() < 5 and ny_time.hour == 9 and ny_time.minute == 30:
+                            if last_market_open_date != ny_time.date():
+                                log.info("🔔 [INTERRUPT] US Market just opened! Waking up immediately.")
+                                last_market_open_date = ny_time.date()
+                                break
+                    except Exception:
+                        pass
+                        
                 if self.running:
-                    await self.run_cycle()
+                    needs_retry = await self.run_cycle()
                     last_mtime = os.path.getmtime(alpha_file) if alpha_file.exists() else last_mtime
+                    if needs_retry:
+                        log.info("⏳ Waiting 60 seconds before LLM retry...")
+                        await asyncio.sleep(60)
+                        continue
 
         finally:
             # Always disconnect MCP on exit

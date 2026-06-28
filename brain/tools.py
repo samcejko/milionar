@@ -31,6 +31,41 @@ LOCAL_TOOL_DESCRIPTIONS = [
         "args": {"query": "string — hledaný výraz, např. 'NVIDIA earnings 2026'"},
     },
     {
+        "name": "search_internet",
+        "description": (
+            "Prohledá celý internet pomocí vyhledávače DuckDuckGo. "
+            "Použij k nalezení jakýchkoliv informací, faktů, nebo trendů, které potřebuješ "
+            "k utvoření makroekonomického obrazu nebo vyhledání konkrétní zprávy."
+        ),
+        "args": {"query": "string — hledaný výraz, např. 'US Federal Reserve interest rates today'"},
+    },
+    {
+        "name": "search_wikipedia",
+        "description": (
+            "Získá kompletní a detailní shrnutí (summary) z Wikipedie pro dané téma. "
+            "Zavolej tuto funkci, pokud narazíš na neznámou firmu, technologii nebo makroekonomický koncept a potřebuješ detailní porozumění."
+        ),
+        "args": {"query": "string — hledaný výraz v angličtině (přesný název článku, např. 'Nvidia', 'Quantum computing')"},
+    },
+    {
+        "name": "search_twitter",
+        "description": (
+            "Prohledá sociální síť Twitter (X) pro daný klíčový výraz. "
+            "Tento nástroj je perfektní pro lovení aktuálního sentimentu lidí ohledně kryptoměn nebo meme akcií."
+        ),
+        "args": {"query": "string — hledaný výraz, např. 'Bitcoin ETF' nebo 'Tesla FSD'"},
+    },
+    {
+        "name": "update_trading_rules",
+        "description": (
+            "Slouží k uložení nebo odstranění tvých vlastních obchodních pravidel. "
+            "Pokud z historie nebo analýzy zjistíš něco důležitého (např. 'Nikdy nekupovat akcie z Číny' "
+            "nebo 'Při velkém VIXu snížit pozice'), použij tento nástroj. Tato pravidla se ti vždy "
+            "načtou na začátku tvých instrukcí."
+        ),
+        "args": {"action": "string — 'ADD' nebo 'REMOVE'", "rule": "string — samotné pravidlo"},
+    },
+    {
         "name": "get_technical_analysis",
         "description": (
             "Multi-timeframe technická analýza pro daný ticker. "
@@ -88,6 +123,10 @@ class ToolRegistry:
         # Local tool dispatch table
         self._local_tools = {
             "search_news": self._search_news,
+            "search_internet": self._search_internet,
+            "search_wikipedia": self._search_wikipedia,
+            "search_twitter": self._search_twitter,
+            "update_trading_rules": self._update_trading_rules,
             "get_technical_analysis": self._get_technical_analysis,
             "get_social_sentiment": self._get_social_sentiment,
             "run_quantitative_backtest": self._run_quantitative_backtest,
@@ -135,6 +174,60 @@ class ToolRegistry:
     def _search_news(self, query: str) -> list:
         return self.news.search_topic(query)
 
+    def _search_internet(self, query: str) -> list:
+        from ddgs import DDGS
+        try:
+            with DDGS() as ddgs:
+                results = ddgs.text(query, max_results=5)
+                return [{"title": r.get("title", ""), "body": r.get("body", ""), "href": r.get("href", "")} for r in results]
+        except Exception as e:
+            return [{"error": str(e)}]
+
+    def _search_wikipedia(self, query: str) -> dict:
+        import urllib.request
+        import urllib.parse
+        try:
+            # Using Wikipedia REST API to get summary
+            safe_query = urllib.parse.quote(query)
+            url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{safe_query}"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req) as response:
+                if response.status == 200:
+                    data = json.loads(response.read().decode())
+                    return {"title": data.get("title"), "summary": data.get("extract")}
+        except Exception as e:
+            return {"error": f"Wikipedia search failed: {e}"}
+        return {"error": "Not found"}
+
+    def _search_twitter(self, query: str) -> list:
+        from ddgs import DDGS
+        try:
+            twitter_query = f"{query} (site:twitter.com OR site:x.com)"
+            with DDGS() as ddgs:
+                results = ddgs.text(twitter_query, max_results=5)
+                return [{"tweet": r.get("body", ""), "link": r.get("href", "")} for r in results]
+        except Exception as e:
+            return [{"error": str(e)}]
+
+    def _update_trading_rules(self, action: str, rule: str) -> dict:
+        import os
+        from datetime import datetime
+        filepath = os.path.join(self.config.MEMORY_DIR, "trading_rules.md")
+        
+        # Ensure file exists
+        if not os.path.exists(filepath):
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write("# Vlastní Pravidla Tradingu\n\n")
+
+        with open(filepath, "a", encoding="utf-8") as f:
+            if action.upper() == "ADD":
+                f.write(f"- [ADDED {datetime.now().strftime('%Y-%m-%d %H:%M')}] {rule}\n")
+            elif action.upper() == "REMOVE":
+                f.write(f"- [REMOVED {datetime.now().strftime('%Y-%m-%d %H:%M')}] {rule}\n")
+        
+        log.info(f"Updated trading rules: {action} {rule}")
+        return {"status": "success", "message": f"Rule '{rule}' logged as {action}."}
+
     async def _get_technical_analysis(self, ticker: str) -> dict:
         return await get_technical_analysis(ticker, self.config)
 
@@ -145,7 +238,10 @@ class ToolRegistry:
     async def _run_quantitative_backtest(self, ticker: str) -> dict:
         from market.data import MarketData
         md = MarketData(self.config)
-        return await run_quantitative_backtest(ticker, md)
+        try:
+            return await run_quantitative_backtest(ticker, md)
+        finally:
+            await md.close()
 
     def _read_youtube_video(self, url: str) -> dict:
         import urllib.parse as urlparse

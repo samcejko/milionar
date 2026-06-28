@@ -59,7 +59,7 @@ def check_youtube_sentiment():
     Searches for latest videos from Jiří Přibyl, downloads transcript, and evaluates sentiment via LLM.
     """
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
         from youtube_transcript_api import YouTubeTranscriptApi
         import urllib.parse as urlparse
         

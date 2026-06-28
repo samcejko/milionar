@@ -11,7 +11,7 @@ log = logging.getLogger("worker_tech")
 
 def run():
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
         log.info("Fetching Tech Intelligence (Leaks, RAM shortages, Supply chain)...")
         
         query = "semiconductor RAM shortage OR tech product leaks OR AI chip delays OR supply chain constraints"

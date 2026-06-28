@@ -1,0 +1,13 @@
+{
+  "symbols": [
+    {"ticker": "NVDA", "reason": "AI sector leader, high momentum"},
+    {"ticker": "AAPL", "reason": "Blue-chip tech, stable growth"},
+    {"ticker": "MSFT", "reason": "AI integration, strong enterprise"},
+    {"ticker": "TSLA", "reason": "High volatility, EV sector"},
+    {"ticker": "SPY", "reason": "S&P 500 benchmark ETF"},
+    {"ticker": "QQQ", "reason": "Nasdaq 100 tech benchmark ETF"},
+    {"ticker": "BTC/USD", "reason": "Crypto market leader"},
+    {"ticker": "ETH/USD", "reason": "Leading smart contract crypto"},
+    {"ticker": "SOL/USD", "reason": "High performance crypto"}
+  ]
+}

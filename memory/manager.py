@@ -276,6 +276,8 @@ class MemoryManager:
 
     async def get_trade_history(self, limit: int = 20) -> list[dict]:
         """Read recent trade history."""
+        path = self.config.TRADES_FILE
+        
         def _read():
             if not path.exists():
                 return []

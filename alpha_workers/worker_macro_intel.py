@@ -11,7 +11,7 @@ log = logging.getLogger("worker_macro")
 
 def run():
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
         log.info("Fetching Macro Intelligence (FED/CPI/Economy)...")
         
         query = "FED interest rate decision today OR US CPI inflation data today OR stock market crash news"

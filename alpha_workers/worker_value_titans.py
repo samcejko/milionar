@@ -12,7 +12,7 @@ log = logging.getLogger("worker_value_titans")
 
 def check_value_titans():
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
         log.info("Fetching Value Titans (Buffett/Damodaran) Intelligence...")
         
         query = '("Warren Buffett" OR "Berkshire Hathaway" OR "Aswath Damodaran") (bought OR undervalued OR "13F" OR buying)'

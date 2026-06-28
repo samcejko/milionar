@@ -12,7 +12,7 @@ log = logging.getLogger("worker_macro_gurus")
 
 def check_macro_gurus():
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
         log.info("Fetching Macro Gurus (Burry/Marks) Intelligence...")
         
         query = '("Michael Burry" OR "Howard Marks") (short OR bubble OR crash OR warning)'

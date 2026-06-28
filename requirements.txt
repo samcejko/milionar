@@ -1,7 +1,7 @@
 # Milionář — Dependencies
 # Install: pip install -r requirements.txt
 
-ddgs>=0.1                    # News search (free, no API key)
+ddgs>=0.1     # News search (free, no API key)
 python-dotenv>=1.0           # Load .env file
 requests>=2.28               # HTTP client (Alpaca API, OpenRouter, Telegram)
 mcp>=1.0                     # MCP Python SDK (Alpaca tool provider via stdio)
@@ -13,3 +13,4 @@ pypdf>=5.0                   # PDF metadata parsing
 filelock>=3.12               # Concurrent JSON file locking
 rich>=13.0.0                 # Beautiful terminal UI and dashboard
 youtube-transcript-api>=0.6.2 # Downloading transcripts from YouTube videos
+alpaca-py>=0.30.0

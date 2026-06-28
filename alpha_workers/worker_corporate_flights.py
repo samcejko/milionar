@@ -17,7 +17,7 @@ def check_corporate_flights():
     or flying to competitors HQ) often precedes M&A (Mergers and Acquisitions) or big partnerships.
     """
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
         log.info("Fetching Corporate Jet Tracking Intelligence...")
         
         query = '("corporate jet" OR "private jet" OR "flight tracker") (CEO OR executives OR merger OR acquisition OR meeting)'
