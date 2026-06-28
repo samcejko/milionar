@@ -800,6 +800,9 @@ class Milionar:
 
         # Initialize hybrid tool registry (MCP + local tools)
         self.tools = ToolRegistry(self.mcp_provider, self.news, self.config)
+        
+        # Log system boot to memory
+        await self.memory.write_system_boot()
 
         if self.config.TELEGRAM_BOT_TOKEN:
             log.info("Telegram notifications: ENABLED")

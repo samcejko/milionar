@@ -97,6 +97,29 @@ class MemoryManager:
         await asyncio.to_thread(_write)
         log.info(f"Journal entry written -> {path.name}")
 
+    async def write_system_boot(self) -> None:
+        """Write a system boot entry to the journal."""
+        today = datetime.now().strftime("%Y-%m-%d")
+        path = self.config.JOURNAL_DIR / f"{today}.md"
+        now = datetime.now().strftime("%H:%M")
+        
+        entry = f"""
+---
+
+## [SYSTEM] {now}
+**AGENT RESTARTED / BOOT SEQUENCE COMPLETED**
+- System has just (re)started.
+- Note: New tools or rules may have been added. Check your toolset and instructions.
+"""
+        def _write():
+            if not path.exists():
+                path.write_text(f"# 📅 Trading Journal - {today}\n\n", encoding="utf-8")
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(entry)
+
+        await asyncio.to_thread(_write)
+        log.info(f"System boot journal entry written -> {path.name}")
+
     async def get_recent_journal(self, days: int = 3) -> str:
         """
         Read journal entries from the last N days.
